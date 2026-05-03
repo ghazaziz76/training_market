@@ -1,0 +1,1064 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [uuidOssp(map: "uuid-ossp"), pgcrypto, pg_trgm, vector]
+}
+
+// ============================================================
+// USERS & AUTH
+// ============================================================
+
+model User {
+  user_id              String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  role                 String    @db.VarChar(20) // employer, individual, provider, admin
+  full_name            String    @db.VarChar(255)
+  email                String    @unique @db.VarChar(255)
+  phone                String?   @db.VarChar(50)
+  password_hash        String    @db.VarChar(255)
+  profile_image_url    String?   @db.VarChar(500)
+  status               String    @default("pending_verification") @db.VarChar(30)
+  email_verified       Boolean   @default(false)
+  verification_token   String?   @db.VarChar(255)
+  reset_token          String?   @db.VarChar(255)
+  reset_token_expiry   DateTime?
+  last_login_at        DateTime?
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @updatedAt
+
+  employer_profile     EmployerProfile?
+  individual_profile   IndividualProfile?
+  provider_profile     TrainingProvider?
+  refresh_tokens       RefreshToken[]
+  notifications        Notification[]
+  user_activities      UserActivity[]
+  search_history       SearchHistory[]
+  reviews              ProgramReview[]
+  device_tokens        UserDeviceToken[]
+  sent_enquiries       Enquiry[]            @relation("EnquirerUser")
+  enquiry_replies      EnquiryReply[]
+  advisor_conversations AdvisorConversation[]
+  feature_entitlements  FeatureEntitlement[]
+
+  @@index([role])
+  @@index([status])
+  @@index([email])
+  @@map("users")
+}
+
+model RefreshToken {
+  token_id    String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id     String   @db.Uuid
+  token_hash  String   @db.VarChar(255)
+  device_info String?  @db.VarChar(500)
+  expires_at  DateTime
+  created_at  DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([token_hash])
+  @@map("refresh_tokens")
+}
+
+// ============================================================
+// PROFILES
+// ============================================================
+
+model EmployerProfile {
+  employer_id             String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id                 String   @unique @db.Uuid
+  company_name            String?  @db.VarChar(255)
+  registration_no         String?  @db.VarChar(100)
+  industry                String?  @db.VarChar(100)
+  company_size            String?  @db.VarChar(50)
+  contact_person          String?  @db.VarChar(255)
+  contact_email           String?  @db.VarChar(255)
+  contact_phone           String?  @db.VarChar(50)
+  address                 String?  @db.Text
+  city                    String?  @db.VarChar(100)
+  state                   String?  @db.VarChar(100)
+  postcode                String?  @db.VarChar(10)
+  hrd_corp_registered     Boolean  @default(false)
+  hrd_corp_levy_balance   Decimal? @db.Decimal(12, 2)
+  training_interests      String[] @default([])
+  profile_completion_pct  Int      @default(0)
+  created_at              DateTime @default(now())
+  updated_at              DateTime @updatedAt
+
+  user                    User                    @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  broadcast_requests      TrainingRequestBroadcast[]
+  hrd_corp_checklists     HrdCorpChecklist[]
+  effectiveness_records   EffectivenessRecord[]
+  annual_training_plans   AnnualTrainingPlan[]
+  levy_utilization        LevyUtilizationRecord[]
+  pool_participants       PoolParticipant[]
+
+  @@index([industry])
+  @@map("employer_profiles")
+}
+
+model IndividualProfile {
+  individual_id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id                String   @unique @db.Uuid
+  occupation             String?  @db.VarChar(255)
+  education_level        String?  @db.VarChar(100)
+  city                   String?  @db.VarChar(100)
+  state                  String?  @db.VarChar(100)
+  skill_interests        String[] @default([])
+  career_goals           String?  @db.Text
+  preferred_training_mode String? @db.VarChar(20)
+  profile_completion_pct Int      @default(0)
+  created_at             DateTime @default(now())
+  updated_at             DateTime @updatedAt
+
+  user User @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@map("individual_profiles")
+}
+
+// ============================================================
+// TRAINING PROVIDERS
+// ============================================================
+
+model TrainingProvider {
+  provider_id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id                  String   @unique @db.Uuid
+  provider_name            String?  @db.VarChar(255)
+  registration_no          String?  @db.VarChar(100)
+  business_description     String?  @db.Text
+  contact_person           String?  @db.VarChar(255)
+  contact_email            String?  @db.VarChar(255)
+  contact_phone            String?  @db.VarChar(50)
+  address                  String?  @db.Text
+  city                     String?  @db.VarChar(100)
+  state                    String?  @db.VarChar(100)
+  postcode                 String?  @db.VarChar(10)
+  website                  String?  @db.VarChar(500)
+  logo_url                 String?  @db.VarChar(500)
+  accreditation_details    String?  @db.Text
+  quality_tier             String   @default("unverified") @db.VarChar(20)
+  quality_tier_updated_at  DateTime?
+  verification_status      String   @default("pending") @db.VarChar(20)
+  verified_at              DateTime?
+  verification_notes       String?  @db.Text
+  year_established         Int?
+  specializations          Json     @default("[]")
+  hrd_corp_registered_provider Boolean @default(false)
+  hrd_corp_provider_id     String?  @db.VarChar(100)
+  hrd_corp_certificate_url String?  @db.VarChar(500)
+  response_rate            Decimal  @default(0) @db.Decimal(5, 2)
+  average_response_time    Decimal  @default(0) @db.Decimal(8, 2)
+  average_rating           Decimal  @default(0) @db.Decimal(3, 2)
+  total_completed_programs Int      @default(0)
+  awards_won               Int      @default(0)
+  profile_completion_pct   Int      @default(0)
+  status                   String   @default("active") @db.VarChar(20)
+  created_at               DateTime @default(now())
+  updated_at               DateTime @updatedAt
+
+  user                 User                @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  programs             TrainingProgram[]
+  trainers             Trainer[]
+  subscriptions        Subscription[]
+  received_enquiries   Enquiry[]           @relation("ProviderEnquiries")
+  proposals            TpProposal[]
+  featured_listings    FeaturedListing[]
+  promotions           Promotion[]
+  effectiveness_records EffectivenessRecord[] @relation("ProviderEffectiveness")
+  pool_offers          PoolTpOffer[]
+  reviews              ProgramReview[]
+
+  @@index([quality_tier])
+  @@index([verification_status])
+  @@index([status])
+  @@map("training_providers")
+}
+
+// ============================================================
+// TRAINING CATALOG
+// ============================================================
+
+model Category {
+  category_id       String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name              String     @db.VarChar(255)
+  slug              String     @unique @db.VarChar(255)
+  parent_id         String?    @db.Uuid
+  icon              String?    @db.VarChar(100)
+  sort_order        Int        @default(0)
+  status            String     @default("active") @db.VarChar(20)
+  created_at        DateTime   @default(now())
+
+  parent            Category?  @relation("CategoryHierarchy", fields: [parent_id], references: [category_id])
+  children          Category[] @relation("CategoryHierarchy")
+  programs          TrainingProgram[]
+  skill_tags        SkillTag[]
+
+  @@index([parent_id])
+  @@index([slug])
+  @@map("categories")
+}
+
+model SkillTag {
+  tag_id      String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name        String   @db.VarChar(255)
+  slug        String   @unique @db.VarChar(255)
+  category_id String?  @db.Uuid
+  created_at  DateTime @default(now())
+
+  category    Category?          @relation(fields: [category_id], references: [category_id])
+  programs    ProgramSkillTag[]
+
+  @@index([slug])
+  @@map("skill_tags")
+}
+
+model TrainingProgram {
+  program_id           String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  provider_id          String    @db.Uuid
+  category_id          String    @db.Uuid
+  subcategory_id       String?   @db.Uuid
+  custom_category      String?   @db.VarChar(255)
+
+  // ---- Core Info (TP key input fields) ----
+  title                String    @db.VarChar(500)
+  slug                 String    @unique @db.VarChar(500)
+  description          String    @db.Text          // overview of the program
+  objective            String?   @db.Text          // specific learning objectives
+  target_group         String?   @db.Text          // who should attend (e.g. Senior Managers, Factory Supervisors)
+  duration_hours       Int?
+  duration_days        Int?
+
+  // ---- Program Type & Pricing ----
+  program_type         String    @default("public") @db.VarChar(20) // public, in_house, both
+  fee_per_pax          Decimal?  @db.Decimal(12, 2) // per person rate (public programs)
+  fee_per_group        Decimal?  @db.Decimal(12, 2) // per group rate (in-house programs)
+  min_group_size       Int?                          // minimum pax for in-house
+  max_group_size       Int?                          // maximum pax for in-house
+  early_bird_fee       Decimal?  @db.Decimal(12, 2) // early bird per-pax discount
+  fee_notes            String?   @db.Text           // additional pricing notes
+
+  // ---- Program Agenda (day-by-day module breakdown) ----
+  // JSON array: [{ day: 1, slots: [{ start_time: "9:00 AM", end_time: "10:30 AM", module_title: "...", description: "..." }] }]
+  agenda               Json      @default("[]")
+
+  // ---- Classification ----
+  skill_type           String    @default("technical") @db.VarChar(20) // soft_skills, technical, both
+  is_certification     Boolean   @default(false)       // whether this is a certification program
+  certification_name   String?   @db.VarChar(255)      // name of certification awarded (e.g. "Lean Six Sigma Green Belt")
+  certification_body   String?   @db.VarChar(255)      // awarding body (e.g. "ASQ", "PMI", "HRDF")
+  certification_doc_url String?  @db.VarChar(500)      // authorization/accreditation letter from awarding body
+
+  // ---- Additional Details ----
+  short_description    String?   @db.VarChar(500)
+  prerequisites        String?   @db.Text
+  industry_focus       String[]  @default([])
+  delivery_mode        String    @db.VarChar(20)    // online, physical, hybrid
+  location             String?   @db.VarChar(255)
+  city                 String?   @db.VarChar(100)
+  state                String?   @db.VarChar(100)
+  min_participants     Int?                          // minimum for public sessions
+  max_participants     Int?                          // maximum for public sessions
+  language             String    @default("English") @db.VarChar(50)
+  materials_provided   String?   @db.Text
+  thumbnail_url        String?   @db.VarChar(500)
+  brochure_url         String?   @db.VarChar(500)
+
+  // ---- HRD Corp ----
+  hrd_corp_claimable   Boolean   @default(false)
+  hrd_corp_scheme      String?   @db.VarChar(100)
+  hrd_corp_program_id  String?   @db.VarChar(100)
+
+  // ---- Metrics & Status ----
+  effectiveness_score  Decimal   @default(0) @db.Decimal(3, 2)
+  view_count           Int       @default(0)
+  enquiry_count        Int       @default(0)
+  status               String    @default("draft") @db.VarChar(20)
+  rejection_reason     String?   @db.Text
+  published_at         DateTime?
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @updatedAt
+
+  provider             TrainingProvider     @relation(fields: [provider_id], references: [provider_id])
+  category             Category             @relation(fields: [category_id], references: [category_id])
+  skill_tags           ProgramSkillTag[]
+  schedules            ProgramSchedule[]
+  reviews              ProgramReview[]
+  program_trainers     ProgramTrainer[]
+  enquiries            Enquiry[]
+  proposals            TpProposal[]
+  featured_listings    FeaturedListing[]
+  promotions           Promotion[]
+  saved_by             SavedProgram[]
+  embeddings           ProgramEmbedding?
+  ai_matches           AiMatchRecord[]
+  effectiveness_records EffectivenessRecord[]
+
+  @@index([provider_id])
+  @@index([category_id])
+  @@index([status])
+  @@index([program_type])
+  @@index([skill_type])
+  @@index([delivery_mode])
+  @@index([hrd_corp_claimable])
+  @@index([published_at])
+  @@map("training_programs")
+}
+
+model ProgramSkillTag {
+  program_id String @db.Uuid
+  tag_id     String @db.Uuid
+
+  program    TrainingProgram @relation(fields: [program_id], references: [program_id], onDelete: Cascade)
+  skill_tag  SkillTag        @relation(fields: [tag_id], references: [tag_id], onDelete: Cascade)
+
+  @@id([program_id, tag_id])
+  @@map("program_skill_tags")
+}
+
+model ProgramSchedule {
+  schedule_id     String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  program_id      String   @db.Uuid
+  start_date      DateTime @db.Date
+  end_date        DateTime @db.Date
+  start_time      String?  @db.VarChar(10)
+  end_time        String?  @db.VarChar(10)
+  venue           String?  @db.VarChar(500)
+  online_platform String?  @db.VarChar(255)
+  available_seats Int?
+  status          String   @default("open") @db.VarChar(20)
+  created_at      DateTime @default(now())
+
+  program TrainingProgram @relation(fields: [program_id], references: [program_id], onDelete: Cascade)
+
+  @@index([program_id])
+  @@index([start_date])
+  @@map("program_schedules")
+}
+
+model Trainer {
+  trainer_id      String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  provider_id     String   @db.Uuid
+  name            String   @db.VarChar(255)
+  qualification   String?  @db.Text
+  specialization  String?  @db.VarChar(255)
+  bio             String?  @db.Text
+  photo_url       String?  @db.VarChar(500)
+  years_experience Int?
+  status          String   @default("active") @db.VarChar(20)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  provider         TrainingProvider @relation(fields: [provider_id], references: [provider_id], onDelete: Cascade)
+  program_trainers ProgramTrainer[]
+
+  @@index([provider_id])
+  @@map("trainers")
+}
+
+model ProgramTrainer {
+  program_id String @db.Uuid
+  trainer_id String @db.Uuid
+
+  program TrainingProgram @relation(fields: [program_id], references: [program_id], onDelete: Cascade)
+  trainer Trainer         @relation(fields: [trainer_id], references: [trainer_id], onDelete: Cascade)
+
+  @@id([program_id, trainer_id])
+  @@map("program_trainers")
+}
+
+// ============================================================
+// ENQUIRIES
+// ============================================================
+
+model Enquiry {
+  enquiry_id       String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  requester_id     String   @db.Uuid
+  provider_id      String   @db.Uuid
+  program_id       String?  @db.Uuid
+  enquiry_type     String   @db.VarChar(30)
+  subject          String   @db.VarChar(500)
+  message          String   @db.Text
+  participant_count Int?
+  preferred_dates  String?  @db.VarChar(255)
+  budget_range     String?  @db.VarChar(100)
+  status           String   @default("sent") @db.VarChar(20)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  requester User             @relation("EnquirerUser", fields: [requester_id], references: [user_id])
+  provider  TrainingProvider @relation("ProviderEnquiries", fields: [provider_id], references: [provider_id])
+  program   TrainingProgram? @relation(fields: [program_id], references: [program_id])
+  replies   EnquiryReply[]
+  proposals TpProposal[]
+  checklist HrdCorpChecklist? @relation("EnquiryChecklist")
+
+  @@index([requester_id])
+  @@index([provider_id])
+  @@index([status])
+  @@map("enquiries")
+}
+
+model EnquiryReply {
+  reply_id    String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  enquiry_id  String   @db.Uuid
+  sender_id   String   @db.Uuid
+  message     String   @db.Text
+  attachments Json     @default("[]")
+  created_at  DateTime @default(now())
+
+  enquiry Enquiry @relation(fields: [enquiry_id], references: [enquiry_id], onDelete: Cascade)
+  sender  User    @relation(fields: [sender_id], references: [user_id])
+
+  @@index([enquiry_id])
+  @@map("enquiry_replies")
+}
+
+// ============================================================
+// BROADCAST REQUESTS & PROPOSALS
+// ============================================================
+
+model TrainingRequestBroadcast {
+  request_id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  employer_id       String   @db.Uuid
+  title             String   @db.VarChar(500)
+  description       String   @db.Text
+  target_audience   String?  @db.Text
+  participant_count Int
+  training_days     Int      @default(1)
+  training_type     String   @default("public") @db.VarChar(20)
+  preferred_mode    String   @default("any") @db.VarChar(20)
+  preferred_location String? @db.VarChar(255)
+  preferred_dates   String?  @db.VarChar(255)
+  budget_min        Decimal? @db.Decimal(12, 2)
+  budget_max        Decimal? @db.Decimal(12, 2)
+  industry_context  String?  @db.VarChar(255)
+  target_skills     String[] @default([])
+  response_deadline DateTime @db.Date
+  total_proposals   Int      @default(0)
+  awarded_provider_id String? @db.Uuid
+  status            String   @default("open") @db.VarChar(20)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  employer  EmployerProfile @relation(fields: [employer_id], references: [employer_id])
+  proposals TpProposal[]
+
+  @@index([employer_id])
+  @@index([status])
+  @@index([response_deadline])
+  @@map("training_request_broadcasts")
+}
+
+model TpProposal {
+  proposal_id       String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  request_id        String?  @db.Uuid
+  enquiry_id        String?  @db.Uuid
+  provider_id       String   @db.Uuid
+  program_id        String?  @db.Uuid
+  proposal_message  String   @db.Text
+  fee_per_pax       Decimal? @db.Decimal(12, 2)
+  fee_per_group     Decimal? @db.Decimal(12, 2)
+  proposed_fee      Decimal  @db.Decimal(12, 2)
+  fee_breakdown     String?  @db.Text
+  proposed_schedule String   @db.VarChar(500)
+  proposed_duration String?  @db.VarChar(255)
+  trainer_details   String?  @db.Text
+  value_add_offers  Json     @default("[]")
+  attachments       Json     @default("[]")
+  ai_value_score    Int?
+  employer_notes    String?  @db.Text
+  status            String   @default("submitted") @db.VarChar(20)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  request   TrainingRequestBroadcast? @relation(fields: [request_id], references: [request_id])
+  enquiry   Enquiry?                  @relation(fields: [enquiry_id], references: [enquiry_id])
+  provider  TrainingProvider          @relation(fields: [provider_id], references: [provider_id])
+  program   TrainingProgram?          @relation(fields: [program_id], references: [program_id])
+  checklist HrdCorpChecklist?         @relation("ProposalChecklist")
+
+  @@unique([request_id, provider_id])
+  @@index([request_id])
+  @@index([enquiry_id])
+  @@index([provider_id])
+  @@index([status])
+  @@map("tp_proposals")
+}
+
+model ProgramReview {
+  review_id    String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  program_id   String   @db.Uuid
+  provider_id  String   @db.Uuid
+  user_id      String   @db.Uuid
+  rating       Int
+  title        String?  @db.VarChar(255)
+  comment      String?  @db.Text
+  is_verified  Boolean  @default(false)
+  status       String   @default("published") @db.VarChar(20)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  program  TrainingProgram  @relation(fields: [program_id], references: [program_id])
+  provider TrainingProvider @relation(fields: [provider_id], references: [provider_id])
+  user     User             @relation(fields: [user_id], references: [user_id])
+
+  @@unique([program_id, user_id])
+  @@index([program_id])
+  @@index([provider_id])
+  @@map("program_reviews")
+}
+
+// ============================================================
+// HRD CORP GUIDANCE
+// ============================================================
+
+model HrdCorpGuidanceRule {
+  rule_id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  scheme_name          String   @db.VarChar(255)
+  scheme_code          String   @unique @db.VarChar(50)
+  description          String?  @db.Text
+  eligibility_criteria Json     @default("[]")
+  required_documents   Json     @default("[]")
+  process_steps        Json     @default("[]")
+  useful_links         Json     @default("[]")
+  notes                String?  @db.Text
+  status               String   @default("active") @db.VarChar(20)
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  checklists HrdCorpChecklist[]
+
+  @@map("hrd_corp_guidance_rules")
+}
+
+model HrdCorpChecklist {
+  checklist_id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  employer_id         String   @db.Uuid
+  program_id          String?  @db.Uuid
+  proposal_id         String?  @unique @db.Uuid
+  enquiry_id          String?  @unique @db.Uuid
+  scheme_code         String   @db.VarChar(50)
+  checklist_items     Json     @default("[]")
+  overall_readiness_pct Decimal @default(0) @db.Decimal(5, 2)
+  notes               String?  @db.Text
+  status              String   @default("in_progress") @db.VarChar(20)
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  employer EmployerProfile     @relation(fields: [employer_id], references: [employer_id])
+  rule     HrdCorpGuidanceRule @relation(fields: [scheme_code], references: [scheme_code])
+  proposal TpProposal?         @relation("ProposalChecklist", fields: [proposal_id], references: [proposal_id])
+  enquiry  Enquiry?            @relation("EnquiryChecklist", fields: [enquiry_id], references: [enquiry_id])
+
+  @@index([employer_id])
+  @@map("hrd_corp_checklists")
+}
+
+// ============================================================
+// SUBSCRIPTIONS & BILLING
+// ============================================================
+
+model SubscriptionPlan {
+  plan_id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  plan_name         String   @db.VarChar(255)
+  plan_code         String   @unique @db.VarChar(50)
+  description       String?  @db.Text
+  billing_cycle     String   @db.VarChar(20) // monthly, annual
+  price             Decimal  @db.Decimal(12, 2)
+  currency          String   @default("MYR") @db.VarChar(10)
+  features          Json     @default("[]")
+  max_programs      Int?
+  max_featured_listings Int  @default(0)
+  analytics_level   String   @default("basic") @db.VarChar(20)
+  is_active         Boolean  @default(true)
+  sort_order        Int      @default(0)
+  created_at        DateTime @default(now())
+
+  subscriptions Subscription[]
+
+  @@map("subscription_plans")
+}
+
+model Subscription {
+  subscription_id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  provider_id            String   @db.Uuid
+  plan_id                String   @db.Uuid
+  gateway_subscription_id String? @db.VarChar(255)
+  payment_status         String   @default("pending") @db.VarChar(20)
+  auto_renew             Boolean  @default(false)
+  start_date             DateTime? @db.Date
+  end_date               DateTime? @db.Date
+  created_at             DateTime @default(now())
+  updated_at             DateTime @updatedAt
+
+  provider     TrainingProvider    @relation(fields: [provider_id], references: [provider_id])
+  plan         SubscriptionPlan    @relation(fields: [plan_id], references: [plan_id])
+  transactions PaymentTransaction[]
+
+  @@index([provider_id])
+  @@index([payment_status])
+  @@map("subscriptions")
+}
+
+model PaymentTransaction {
+  transaction_id  String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  subscription_id String   @db.Uuid
+  amount          Decimal  @db.Decimal(12, 2)
+  currency        String   @default("MYR") @db.VarChar(10)
+  payment_method  String?  @db.VarChar(50)
+  gateway_ref     String?  @db.VarChar(255)
+  invoice_number  String?  @db.VarChar(50)
+  invoice_url     String?  @db.VarChar(500)
+  status          String   @default("pending") @db.VarChar(20)
+  paid_at         DateTime?
+  created_at      DateTime @default(now())
+
+  subscription Subscription @relation(fields: [subscription_id], references: [subscription_id])
+
+  @@index([subscription_id])
+  @@map("payment_transactions")
+}
+
+// ============================================================
+// STOREFRONT & PROMOTIONS
+// ============================================================
+
+model FeaturedListing {
+  listing_id    String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  program_id    String?  @db.Uuid
+  provider_id   String?  @db.Uuid
+  listing_type  String   @db.VarChar(30) // hero_banner, featured_program, provider_spotlight
+  title         String?  @db.VarChar(255)
+  description   String?  @db.Text
+  image_url     String?  @db.VarChar(500)
+  link_url      String?  @db.VarChar(500)
+  start_date    DateTime @db.Date
+  end_date      DateTime @db.Date
+  priority_rank Int      @default(0)
+  status        String   @default("active") @db.VarChar(20)
+  created_at    DateTime @default(now())
+
+  program  TrainingProgram?  @relation(fields: [program_id], references: [program_id])
+  provider TrainingProvider? @relation(fields: [provider_id], references: [provider_id])
+
+  @@index([listing_type, status])
+  @@map("featured_listings")
+}
+
+model Promotion {
+  promotion_id   String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  program_id     String   @db.Uuid
+  provider_id    String   @db.Uuid
+  promotion_type String   @db.VarChar(30) // early_bird, group_discount, limited_time
+  label          String   @db.VarChar(255)
+  discount_value Decimal? @db.Decimal(12, 2)
+  start_date     DateTime @db.Date
+  end_date       DateTime @db.Date
+  status         String   @default("active") @db.VarChar(20)
+  created_at     DateTime @default(now())
+
+  program  TrainingProgram  @relation(fields: [program_id], references: [program_id])
+  provider TrainingProvider @relation(fields: [provider_id], references: [provider_id])
+
+  @@index([program_id])
+  @@map("promotions")
+}
+
+model SavedProgram {
+  user_id    String   @db.Uuid
+  program_id String   @db.Uuid
+  created_at DateTime @default(now())
+
+  program TrainingProgram @relation(fields: [program_id], references: [program_id], onDelete: Cascade)
+
+  @@id([user_id, program_id])
+  @@map("saved_programs")
+}
+
+// ============================================================
+// NOTIFICATIONS
+// ============================================================
+
+model Notification {
+  notification_id String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id         String   @db.Uuid
+  type            String   @db.VarChar(50)
+  title           String   @db.VarChar(255)
+  message         String   @db.Text
+  is_read         Boolean  @default(false)
+  reference_id    String?  @db.Uuid
+  reference_type  String?  @db.VarChar(50)
+  action_url      String?  @db.VarChar(500)
+  created_at      DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@index([user_id, is_read])
+  @@index([created_at])
+  @@map("notifications")
+}
+
+model UserDeviceToken {
+  token_id     String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id      String   @db.Uuid
+  device_token String   @unique @db.VarChar(500)
+  platform     String   @db.VarChar(20) // android, ios, web
+  is_active    Boolean  @default(true)
+  last_used_at DateTime @default(now())
+  created_at   DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@map("user_device_tokens")
+}
+
+model NotificationPreference {
+  preference_id              String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id                    String  @unique @db.Uuid
+  email_enquiry_received     Boolean @default(true)
+  email_enquiry_reply        Boolean @default(true)
+  email_broadcast_request    Boolean @default(true)
+  email_proposal_update      Boolean @default(true)
+  email_subscription_reminder Boolean @default(true)
+  email_marketing            Boolean @default(false)
+  push_enquiry_received      Boolean @default(true)
+  push_enquiry_reply         Boolean @default(true)
+  push_broadcast_request     Boolean @default(true)
+  push_proposal_update       Boolean @default(true)
+
+  @@map("notification_preferences")
+}
+
+// ============================================================
+// ACTIVITY TRACKING & ANALYTICS
+// ============================================================
+
+model UserActivity {
+  activity_id  String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id      String   @db.Uuid
+  activity_type String  @db.VarChar(30)
+  target_id    String?  @db.Uuid
+  target_type  String?  @db.VarChar(30)
+  metadata     Json     @default("{}")
+  created_at   DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([activity_type])
+  @@index([target_id, target_type])
+  @@index([created_at])
+  @@map("user_activities")
+}
+
+model SearchHistory {
+  history_id     String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id        String   @db.Uuid
+  search_query   String   @db.VarChar(500)
+  filters_applied Json    @default("{}")
+  results_count  Int      @default(0)
+  created_at     DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([created_at])
+  @@map("search_history")
+}
+
+// ============================================================
+// AI MATCHING
+// ============================================================
+
+model ProgramEmbedding {
+  program_id      String   @id @db.Uuid
+  embedding       Unsupported("vector(1536)")
+  embedding_model String   @db.VarChar(100)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  program TrainingProgram @relation(fields: [program_id], references: [program_id], onDelete: Cascade)
+
+  @@map("program_embeddings")
+}
+
+model AiMatchRecord {
+  match_id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id         String   @db.Uuid
+  program_id      String   @db.Uuid
+  query_text      String   @db.Text
+  match_score     Int
+  match_reason    String?  @db.Text
+  ranking_position Int?
+  created_at      DateTime @default(now())
+
+  program TrainingProgram @relation(fields: [program_id], references: [program_id])
+
+  @@index([user_id])
+  @@index([program_id])
+  @@map("ai_match_records")
+}
+
+model AdvisorConversation {
+  conversation_id String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id         String   @db.Uuid
+  title           String?  @db.VarChar(255)
+  messages        Json     @default("[]")
+  programs_recommended String[] @default([])
+  status          String   @default("active") @db.VarChar(20)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  user User @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@map("advisor_conversations")
+}
+
+// ============================================================
+// DIFFERENTIATING FEATURES
+// ============================================================
+
+model GroupTrainingPool {
+  pool_id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  skill_topic        String   @db.VarChar(255)
+  delivery_mode      String   @db.VarChar(20)
+  location           String?  @db.VarChar(255)
+  target_date_range  String?  @db.VarChar(255)
+  min_participants   Int      @default(10)
+  total_participants Int      @default(0)
+  status             String   @default("forming") @db.VarChar(20)
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+
+  participants PoolParticipant[]
+  tp_offers    PoolTpOffer[]
+
+  @@index([status])
+  @@map("group_training_pools")
+}
+
+model PoolParticipant {
+  participant_id   String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  pool_id          String   @db.Uuid
+  employer_id      String   @db.Uuid
+  participant_count Int
+  created_at       DateTime @default(now())
+
+  pool     GroupTrainingPool @relation(fields: [pool_id], references: [pool_id], onDelete: Cascade)
+  employer EmployerProfile   @relation(fields: [employer_id], references: [employer_id])
+
+  @@unique([pool_id, employer_id])
+  @@map("pool_participants")
+}
+
+model PoolTpOffer {
+  offer_id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  pool_id            String   @db.Uuid
+  provider_id        String   @db.Uuid
+  program_id         String?  @db.Uuid
+  group_fee_per_pax  Decimal  @db.Decimal(12, 2)
+  total_group_fee    Decimal  @db.Decimal(12, 2)
+  proposed_dates     String?  @db.VarChar(255)
+  details            String?  @db.Text
+  status             String   @default("submitted") @db.VarChar(20)
+  created_at         DateTime @default(now())
+
+  pool     GroupTrainingPool @relation(fields: [pool_id], references: [pool_id])
+  provider TrainingProvider  @relation(fields: [provider_id], references: [provider_id])
+
+  @@map("pool_tp_offers")
+}
+
+model EffectivenessRecord {
+  record_id       String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  program_id      String   @db.Uuid
+  provider_id     String   @db.Uuid
+  employer_id     String   @db.Uuid
+  kpi_description String   @db.Text
+  baseline_value  String   @db.VarChar(255)
+  target_value    String   @db.VarChar(255)
+  actual_value    String?  @db.VarChar(255)
+  survey_30_day   Json?
+  survey_60_day   Json?
+  survey_90_day   Json?
+  impact_rating   Int?
+  status          String   @default("tracking") @db.VarChar(20)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  program  TrainingProgram  @relation(fields: [program_id], references: [program_id])
+  provider TrainingProvider @relation("ProviderEffectiveness", fields: [provider_id], references: [provider_id])
+  employer EmployerProfile  @relation(fields: [employer_id], references: [employer_id])
+
+  @@index([program_id])
+  @@index([employer_id])
+  @@map("effectiveness_records")
+}
+
+model AnnualTrainingPlan {
+  plan_id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  employer_id          String   @db.Uuid
+  year                 Int
+  total_budget         Decimal  @db.Decimal(12, 2)
+  departments          Json     @default("[]")
+  planned_items        Json     @default("[]")
+  completion_percentage Decimal @default(0) @db.Decimal(5, 2)
+  status               String  @default("draft") @db.VarChar(20)
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  employer EmployerProfile @relation(fields: [employer_id], references: [employer_id])
+
+  @@unique([employer_id, year])
+  @@map("annual_training_plans")
+}
+
+model LevyUtilizationRecord {
+  record_id             String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  employer_id           String   @db.Uuid
+  year                  Int
+  total_levy            Decimal  @db.Decimal(12, 2)
+  utilized_amount       Decimal  @default(0) @db.Decimal(12, 2)
+  remaining_amount      Decimal  @db.Decimal(12, 2)
+  utilization_percentage Decimal @default(0) @db.Decimal(5, 2)
+  last_updated          DateTime @updatedAt
+
+  employer EmployerProfile @relation(fields: [employer_id], references: [employer_id])
+
+  @@unique([employer_id, year])
+  @@map("levy_utilization_records")
+}
+
+// ============================================================
+// ANALYTICS AGGREGATION
+// ============================================================
+
+model DailyProgramStats {
+  id                         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  program_id                 String   @db.Uuid
+  date                       DateTime @db.Date
+  views                      Int      @default(0)
+  unique_views               Int      @default(0)
+  saves                      Int      @default(0)
+  enquiries                  Int      @default(0)
+  search_appearances         Int      @default(0)
+  recommendation_appearances Int      @default(0)
+  clicks_from_search         Int      @default(0)
+  clicks_from_recommendation Int      @default(0)
+
+  @@unique([program_id, date])
+  @@index([date])
+  @@map("daily_program_stats")
+}
+
+model DailyProviderStats {
+  id                       String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  provider_id              String   @db.Uuid
+  date                     DateTime @db.Date
+  total_views              Int      @default(0)
+  total_enquiries          Int      @default(0)
+  total_proposals_submitted Int     @default(0)
+  proposals_shortlisted    Int      @default(0)
+  proposals_selected       Int      @default(0)
+  average_response_hours   Decimal? @db.Decimal(8, 2)
+
+  @@unique([provider_id, date])
+  @@index([date])
+  @@map("daily_provider_stats")
+}
+
+model DailyPlatformStats {
+  id                        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  date                      DateTime @unique @db.Date
+  total_users               Int      @default(0)
+  new_users                 Int      @default(0)
+  active_users              Int      @default(0)
+  total_searches            Int      @default(0)
+  total_program_views       Int      @default(0)
+  total_enquiries           Int      @default(0)
+  total_broadcast_requests  Int      @default(0)
+  total_proposals           Int      @default(0)
+  total_active_subscriptions Int     @default(0)
+  daily_revenue             Decimal  @default(0) @db.Decimal(12, 2)
+
+  @@map("daily_platform_stats")
+}
+
+// ============================================================
+// MARKET INTELLIGENCE
+// ============================================================
+
+model MarketIntelligenceReport {
+  report_id    String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  report_type  String   @db.VarChar(50)
+  period_start DateTime @db.Date
+  period_end   DateTime @db.Date
+  data         Json
+  created_at   DateTime @default(now())
+
+  @@index([report_type])
+  @@index([period_start])
+  @@map("market_intelligence_reports")
+}
+
+// ============================================================
+// FEATURE ENTITLEMENTS (Google Play purchases)
+// ============================================================
+
+model ActivationCode {
+  code_id              String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  code                 String    @unique @db.VarChar(20)
+  feature_key          String    @db.VarChar(50)
+  google_play_order_id String?   @db.VarChar(255)
+  redeemed_by          String?   @db.Uuid
+  redeemed_at          DateTime?
+  status               String    @default("available") @db.VarChar(20)
+  created_at           DateTime  @default(now())
+
+  @@index([feature_key])
+  @@map("activation_codes")
+}
+
+model FeatureEntitlement {
+  entitlement_id    String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id           String   @db.Uuid
+  feature_key       String   @db.VarChar(50)
+  activation_code   String?  @db.VarChar(20)
+  activation_method String   @db.VarChar(20)
+  status            String   @default("active") @db.VarChar(20)
+  activated_at      DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@unique([user_id, feature_key])
+  @@index([user_id])
+  @@index([feature_key])
+  @@map("feature_entitlements")
+}
+
+// ============================================================
+// ADMIN
+// ============================================================
+
+model AdminAuditLog {
+  log_id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  admin_user_id String   @db.Uuid
+  action        String   @db.VarChar(100)
+  target_type   String?  @db.VarChar(50)
+  target_id     String?  @db.Uuid
+  details       Json?
+  ip_address    String?  @db.VarChar(50)
+  created_at    DateTime @default(now())
+
+  @@index([admin_user_id])
+  @@index([action])
+  @@index([created_at])
+  @@map("admin_audit_logs")
+}

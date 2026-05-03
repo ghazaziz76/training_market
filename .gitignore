@@ -1,0 +1,65 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+
+# Turbo
+.turbo/
+
+# Prisma
+apps/api/prisma/*.db
+apps/api/prisma/migrations/*.sql.bak
+
+# Docker volumes
+postgres_data/
+redis_data/
+
+# Misc
+*.tsbuildinfo
+
+# Secrets (never commit)
+credentials.txt
+
+# Claude Code local-only settings & runtime
+.claude/settings.local.json
+.claude-flow/logs/
+.claude-flow/sessions/
+.claude-flow/data/
+
+# Accidental files from shell typos (0-byte cruft)
+({,+
+{
+{,+
+0
+0)
+75%
+p.title+'
+void

@@ -1,0 +1,27 @@
+{
+  "name": "training-market",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Training Market — intelligent training marketplace for Malaysia",
+  "scripts": {
+    "dev:api": "pnpm --filter @training-market/api dev",
+    "dev:web": "pnpm --filter @training-market/web dev",
+    "build:api": "pnpm --filter @training-market/api build",
+    "build:web": "pnpm --filter @training-market/web build",
+    "lint": "turbo run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "db:generate": "pnpm --filter @training-market/api prisma:generate",
+    "db:migrate": "pnpm --filter @training-market/api prisma:migrate",
+    "db:seed": "pnpm --filter @training-market/api prisma:seed",
+    "db:studio": "pnpm --filter @training-market/api prisma:studio",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "clean": "turbo run clean"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.0"
+}
