@@ -56,10 +56,15 @@ export default function EmployerDashboardPage() {
           <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
           <p className="text-sm text-foreground-muted mt-1">Monitor your training activities and manage requests</p>
         </div>
-        <Link href="/employer/grant-calculator" className="flex-shrink-0 hover:opacity-80 transition-opacity">
+        <a
+          href="https://www.milleniumrx.biz/product/calculator/index.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex-shrink-0 hover:opacity-80 transition-opacity"
+        >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/hrd-grant-calculator.png" alt="HRD Grant Eligibility Calculator" className="h-16 w-auto" />
-        </Link>
+          <img src="/training-grant-estimator.png" alt="Training Grant Estimator" className="h-16 w-auto" />
+        </a>
       </div>
 
       {/* Stats */}
@@ -178,15 +183,15 @@ export default function EmployerDashboardPage() {
         </Card>
       </div>
 
-      {/* HRD Grant Calculator Card */}
+      {/* Training Grant Estimator Card */}
       <div className="mb-8">
-        <Link href="/employer/grant-calculator">
+        <a href="https://www.milleniumrx.biz/product/calculator/index.html" target="_blank" rel="noopener noreferrer">
           <Card className="border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 hover:shadow-md transition-shadow cursor-pointer">
             <div className="flex items-center gap-4">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/hrd-grant-calculator.png" alt="HRD Grant Calculator" className="h-14 w-auto flex-shrink-0" />
+              <img src="/training-grant-estimator.png" alt="Training Grant Estimator" className="h-14 w-auto flex-shrink-0" />
               <div className="flex-1">
-                <h2 className="text-lg font-semibold text-foreground">HRD Grant Calculator</h2>
+                <h2 className="text-lg font-semibold text-foreground">Training Grant Estimator</h2>
                 <p className="text-sm text-foreground-muted">
                   Calculate your maximum HRD Corp claimable amounts based on the Allowable Cost Matrix (ACM)
                 </p>
@@ -194,7 +199,7 @@ export default function EmployerDashboardPage() {
               <ArrowRight className="h-5 w-5 text-amber-600" />
             </div>
           </Card>
-        </Link>
+        </a>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
