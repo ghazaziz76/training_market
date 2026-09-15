@@ -143,6 +143,7 @@ Components:
 - HRD Corp Levy Optimizer dashboard
 - annual training plan builder
 - group training pool participation
+- training history: every program the employer opens is captured automatically; each entry can be marked as attended by staff (with headcount and date) or removed
 - training effectiveness tracking and follow up surveys
 - application tracking
 - smart training calendar with conflict detection
@@ -170,7 +171,7 @@ Components:
 - AI Training Advisor chatbot
 - save programs
 - direct enquiry or enrolment request
-- learning history
+- training history: every program the individual opens is captured automatically; each entry can be marked as attended (with date) or removed
 
 ### Training Provider Portal
 Functions:
@@ -406,6 +407,29 @@ Responsibilities:
 - effectiveness data feed back into AI matching service
 - aggregate effectiveness scores per program and provider
 - effectiveness reporting for employer ROI dashboard
+
+### Training History Service
+Purpose: give employers and individuals a self-maintaining record of the trainings they have looked at and the trainings they actually took, without any manual data entry.
+
+How it works:
+- when a logged in employer or individual opens a program page, the program is added to that user's training history with status "viewed" (one entry per user per program; re-opening refreshes the last viewed time, it does not duplicate)
+- the Training History page lists these entries newest first, each with two actions: **Attended** and **Remove**
+- **Attended** changes the entry status to "attended". Individuals record the date attended. Employers record the date attended and the number of staff who attended (they are recording training they sent staff to, not training they took themselves)
+- **Remove** deletes the entry. If the user opens the program again later it reappears as "viewed"
+- summary figures (trainings attended, staff trained, training days, training hours, certifications) are computed from attended entries only
+- attended entries feed the personalization service (past training signals) and, for employers, the training effectiveness service
+
+Responsibilities:
+- capture program views into history for authenticated employers and individuals
+- list history entries per user with program, provider, category, and duration details
+- mark an entry as attended with date, headcount, and optional notes
+- revert or edit an attended entry
+- remove an entry
+- aggregate attended totals for the summary tiles
+
+Not in scope:
+- providers do not see individual users' history; they only see aggregate view and enquiry counts in analytics
+- history is user-declared. The platform does not verify attendance with the provider
 
 ### Market Intelligence Service
 Responsibilities:
@@ -653,6 +677,24 @@ Fields:
 - target_type (program, provider, category)
 - created_at
 
+### Training History Entry
+One row per user per program. Created automatically on first program view.
+
+Fields:
+- history_id
+- user_id (employer or individual user)
+- program_id
+- status (viewed, attended)
+- first_viewed_at
+- last_viewed_at
+- attended_on (date, set when status becomes attended)
+- participants_count (number of staff attended for employers, always 1 for individuals)
+- notes (optional, free text)
+- created_at
+- updated_at
+
+Uniqueness: (user_id, program_id)
+
 ### Group Training Pool
 Fields:
 - pool_id
@@ -833,10 +875,11 @@ Suggested data points:
 3. Employer lands on interactive training storefront with featured, trending, and recommended programs
 4. Employer browses storefront or searches and filters training
 5. AI returns ranked matching programs
-6. Employer reviews program details on full interactive program page
+6. Employer reviews program details on full interactive program page; the program is added to the employer's training history as viewed
 7. Employer shortlists, compares, or enquires with provider
 8. System displays HRD Corp guidance information where relevant
 9. Employer proceeds with provider engagement and internal grant application action
+10. After staff attend, employer opens Training History and marks the program as attended with headcount and date, or removes programs that were only browsed
 
 ### Path B: Broadcast Training Request
 1. Employer registers for free
@@ -867,8 +910,9 @@ Suggested data points:
 3. Individual lands on personalized training storefront
 4. Individual browses or searches training
 5. AI recommends suitable programs
-6. Individual compares and saves programs
+6. Individual compares and saves programs; every program opened is added to the individual's training history as viewed
 7. Individual enquires or registers with provider
+8. After attending, individual opens Training History and marks the program as attended, or removes programs that were only browsed
 
 ## 9.3 Training Provider Journey
 
