@@ -72,9 +72,10 @@ class ApiClient {
     retry = true,
   ): Promise<ApiResponse<T>> {
     const token = this.getToken();
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
+    const headers: Record<string, string> = {};
+    if (body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+    }
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
@@ -84,7 +85,7 @@ class ApiClient {
     const res = await fetch(url, {
       method,
       headers,
-      body: body ? JSON.stringify(body) : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
     });
 
     // Handle 401 — try refresh once

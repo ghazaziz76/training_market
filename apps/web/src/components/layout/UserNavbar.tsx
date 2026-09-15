@@ -158,6 +158,12 @@ export function UserNavbar() {
                 </div>
               </div>
             )}
+            {!isEmployer && (
+              <Link href="/individual/history" className="hidden md:flex items-center gap-1 rounded-md px-3 py-1.5 text-sm text-foreground-muted hover:text-foreground hover:bg-background-subtle">
+                <History className="h-4 w-4" />
+                <span>Training History</span>
+              </Link>
+            )}
             <Link href="/saved" className="rounded-full p-2 text-foreground-muted hover:bg-background-subtle hover:text-foreground">
               <Heart className="h-5 w-5" />
             </Link>
@@ -247,6 +253,15 @@ export function UserNavbar() {
             >
               Profile
             </Link>
+            {!isEmployer && (
+              <Link
+                href="/individual/history"
+                className="block rounded px-3 py-2 text-sm text-foreground hover:bg-background-subtle"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Training History
+              </Link>
+            )}
             {isEmployer && (
               <>
                 <Link

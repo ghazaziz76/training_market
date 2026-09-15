@@ -35,6 +35,7 @@ import { providerFeatureRoutes, adminTierRoutes } from './modules/providers/prov
 import { employerFeatureRoutes } from './modules/employers/employer.routes.js';
 import { intelligenceRoutes } from './modules/intelligence/intelligence.routes.js';
 import { uploadRoutes } from './modules/uploads/upload.routes.js';
+import { trainingHistoryRoutes } from './modules/training-history/training-history.routes.js';
 
 const app = Fastify({
   logger: {
@@ -135,6 +136,9 @@ await app.register(uploadRoutes, { prefix: '/api/uploads' });
 // ---- Phase 14 & 15: Employer Features + Intelligence ----
 await app.register(employerFeatureRoutes, { prefix: '/api/employer' });
 await app.register(intelligenceRoutes, { prefix: '/api/intelligence' });
+
+// ---- Training History (employers + individuals) ----
+await app.register(trainingHistoryRoutes, { prefix: '/api/me/training-history' });
 
 // Start server
 const start = async () => {

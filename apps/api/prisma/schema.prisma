@@ -43,6 +43,7 @@ model User {
   enquiry_replies      EnquiryReply[]
   advisor_conversations AdvisorConversation[]
   feature_entitlements  FeatureEntitlement[]
+  training_attendances  TrainingAttendance[]
 
   @@index([role])
   @@index([status])
@@ -297,6 +298,7 @@ model TrainingProgram {
   embeddings           ProgramEmbedding?
   ai_matches           AiMatchRecord[]
   effectiveness_records EffectivenessRecord[]
+  attendances          TrainingAttendance[]
 
   @@index([provider_id])
   @@index([category_id])
@@ -678,6 +680,23 @@ model SavedProgram {
 
   @@id([user_id, program_id])
   @@map("saved_programs")
+}
+
+model TrainingAttendance {
+  attendance_id      String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id            String   @db.Uuid
+  program_id         String   @db.Uuid
+  attended_on        DateTime @db.Date
+  participants_count Int      @default(1)
+  notes              String?  @db.Text
+  created_at         DateTime @default(now())
+
+  user    User            @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  program TrainingProgram @relation(fields: [program_id], references: [program_id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([program_id])
+  @@map("training_attendances")
 }
 
 // ============================================================

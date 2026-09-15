@@ -5,6 +5,7 @@ import { seedUsers } from './seeds/users';
 import { seedPrograms } from './seeds/programs';
 import { seedSubscriptionPlans } from './seeds/subscription-plans';
 import { seedHrdCorpRules } from './seeds/hrd-corp-rules';
+import { seedTrainingHistory } from './seeds/training-history';
 
 const prisma = new PrismaClient();
 
@@ -17,6 +18,7 @@ async function main() {
   await seedHrdCorpRules(prisma);
   await seedUsers(prisma);
   await seedPrograms(prisma);
+  await seedTrainingHistory(prisma);
 
   console.log('\nSeeding complete!');
 }
