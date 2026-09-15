@@ -2,21 +2,25 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Award, Calendar, Clock, History, Plus, Search, Trash2, Users } from 'lucide-react';
+import { Award, Calendar, CheckCircle, Clock, Eye, History, Search, Trash2, Undo2, Users } from 'lucide-react';
 import { Button, Card, Input, Modal, Spinner, StatsCard, Textarea } from '@/components/ui';
 import { formatDate } from '@/lib/format';
 import { api } from '@/lib/api';
 
 type Role = 'employer' | 'individual';
+type Filter = 'all' | 'attended' | 'viewed';
 
 interface HistoryEntry {
-  attendance_id: string;
+  history_id: string;
   program_id: string;
-  attended_on: string;
+  status: 'viewed' | 'attended';
+  first_viewed_at: string;
+  last_viewed_at: string;
+  attended_on: string | null;
   participants_count: number;
   notes: string | null;
   program_title: string;
-  program_slug: string;
+  program_status: string;
   duration_hours: number | null;
   duration_days: number | null;
   delivery_mode: string;
@@ -28,7 +32,8 @@ interface HistoryEntry {
 }
 
 interface HistorySummary {
-  total_trainings: number;
+  total_viewed: number;
+  total_attended: number;
   total_participants: number;
   total_hours: number;
   total_days: number;
@@ -40,21 +45,19 @@ interface HistoryResponse {
   summary: HistorySummary;
 }
 
-interface ProgramOption {
-  program_id: string;
-  title: string;
-  provider?: { provider_name?: string };
-  category?: { name?: string };
-  duration_days?: number | null;
-  duration_hours?: number | null;
-}
-
 const EMPTY_SUMMARY: HistorySummary = {
-  total_trainings: 0,
+  total_viewed: 0,
+  total_attended: 0,
   total_participants: 0,
   total_hours: 0,
   total_days: 0,
   certifications: 0,
+};
+
+const FILTER_LABELS: Record<Filter, string> = {
+  all: 'All',
+  attended: 'Attended',
+  viewed: 'Not yet attended',
 };
 
 function todayIso(): string {
@@ -74,19 +77,17 @@ export function TrainingHistory({ role }: { role: Role }) {
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [summary, setSummary] = useState<HistorySummary>(EMPTY_SUMMARY);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Filter>('all');
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const [searching, setSearching] = useState(false);
-  const [results, setResults] = useState<ProgramOption[]>([]);
-  const [selected, setSelected] = useState<ProgramOption | null>(null);
+  // "Attended" dialog state
+  const [target, setTarget] = useState<HistoryEntry | null>(null);
   const [attendedOn, setAttendedOn] = useState(todayIso());
   const [participants, setParticipants] = useState('1');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const res = await api.get<HistoryResponse>('/me/training-history');
@@ -104,39 +105,16 @@ export function TrainingHistory({ role }: { role: Role }) {
     load();
   }, [load]);
 
-  // Debounced program search inside the modal
-  useEffect(() => {
-    if (!modalOpen) return;
-    const q = query.trim();
-    if (!q) {
-      setResults([]);
-      return;
-    }
-    setSearching(true);
-    const timer = setTimeout(async () => {
-      const res = await api.get<ProgramOption[]>(`/search/programs?q=${encodeURIComponent(q)}&limit=8`);
-      setResults(res.success && res.data ? res.data : []);
-      setSearching(false);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [query, modalOpen]);
-
-  const openModal = () => {
-    setQuery('');
-    setResults([]);
-    setSelected(null);
-    setAttendedOn(todayIso());
-    setParticipants('1');
-    setNotes('');
+  const openAttended = (e: HistoryEntry) => {
+    setTarget(e);
+    setAttendedOn(e.attended_on ? String(e.attended_on).slice(0, 10) : todayIso());
+    setParticipants(String(e.participants_count || 1));
+    setNotes(e.notes || '');
     setFormError(null);
-    setModalOpen(true);
   };
 
-  const submit = async () => {
-    if (!selected) {
-      setFormError('Pick the training program first');
-      return;
-    }
+  const submitAttended = async () => {
+    if (!target) return;
     if (!attendedOn) {
       setFormError('Enter the date attended');
       return;
@@ -149,8 +127,7 @@ export function TrainingHistory({ role }: { role: Role }) {
 
     setSubmitting(true);
     setFormError(null);
-    const res = await api.post<HistoryEntry>('/me/training-history', {
-      program_id: selected.program_id,
+    const res = await api.put<HistoryEntry>(`/me/training-history/${target.history_id}/attended`, {
       attended_on: attendedOn,
       participants_count: isEmployer ? count : 1,
       notes: notes.trim() || null,
@@ -158,32 +135,42 @@ export function TrainingHistory({ role }: { role: Role }) {
     setSubmitting(false);
 
     if (res.success) {
-      setModalOpen(false);
+      setTarget(null);
       await load();
     } else {
-      setFormError(res.message || res.errors?.[0]?.message || 'Could not save this training');
+      setFormError(res.message || res.errors?.[0]?.message || 'Could not save');
     }
   };
 
-  const remove = async (id: string) => {
-    if (!window.confirm('Remove this training from your history?')) return;
-    setRemovingId(id);
-    const res = await api.delete(`/me/training-history/${id}`);
-    setRemovingId(null);
+  const unmark = async (e: HistoryEntry) => {
+    if (!window.confirm('Undo "attended" for this training? It will stay in your history as viewed.')) return;
+    setBusyId(e.history_id);
+    const res = await api.delete(`/me/training-history/${e.history_id}/attended`);
+    setBusyId(null);
     if (res.success) await load();
   };
 
-  const groupedByYear = useMemo(() => {
-    const map = new Map<string, HistoryEntry[]>();
-    for (const e of entries) {
-      const year = new Date(e.attended_on).getFullYear().toString();
-      if (!map.has(year)) map.set(year, []);
-      map.get(year)!.push(e);
-    }
-    return [...map.entries()];
-  }, [entries]);
+  const remove = async (e: HistoryEntry) => {
+    if (!window.confirm('Remove this training from your history?')) return;
+    setBusyId(e.history_id);
+    const res = await api.delete(`/me/training-history/${e.history_id}`);
+    setBusyId(null);
+    if (res.success) await load();
+  };
 
-  const addLabel = isEmployer ? 'Add staff training' : 'Add attended training';
+  const visible = useMemo(() => {
+    if (filter === 'all') return entries;
+    return entries.filter((e) => e.status === filter);
+  }, [entries, filter]);
+
+  const counts = useMemo(
+    () => ({
+      all: entries.length,
+      attended: entries.filter((e) => e.status === 'attended').length,
+      viewed: entries.filter((e) => e.status === 'viewed').length,
+    }),
+    [entries],
+  );
 
   if (loading) {
     return (
@@ -195,18 +182,13 @@ export function TrainingHistory({ role }: { role: Role }) {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6">
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Training History</h1>
-          <p className="text-sm text-foreground-muted">
-            {isEmployer
-              ? 'Trainings your staff have attended'
-              : 'Trainings you have attended'}
-          </p>
-        </div>
-        <Button onClick={openModal} leftIcon={<Plus className="h-4 w-4" />}>
-          {addLabel}
-        </Button>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-foreground">Training History</h1>
+        <p className="text-sm text-foreground-muted">
+          {isEmployer
+            ? 'Programs you have looked at. Mark the ones your staff attended.'
+            : 'Programs you have looked at. Mark the ones you attended.'}
+        </p>
       </div>
 
       {loadError && (
@@ -215,9 +197,9 @@ export function TrainingHistory({ role }: { role: Role }) {
         </Card>
       )}
 
-      {/* Summary */}
+      {/* Summary (attended only) */}
       <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatsCard icon={<History className="h-5 w-5" />} label="Trainings attended" value={summary.total_trainings} />
+        <StatsCard icon={<CheckCircle className="h-5 w-5" />} label="Trainings attended" value={summary.total_attended} />
         {isEmployer ? (
           <StatsCard icon={<Users className="h-5 w-5" />} label="Staff trained" value={summary.total_participants} />
         ) : (
@@ -235,186 +217,213 @@ export function TrainingHistory({ role }: { role: Role }) {
         />
       </div>
 
+      {/* Filter tabs */}
+      <div className="mb-6 flex items-center gap-1 border-b border-border">
+        {(Object.keys(FILTER_LABELS) as Filter[]).map((f) => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => setFilter(f)}
+            className={`border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+              filter === f
+                ? 'border-user-primary text-user-primary'
+                : 'border-transparent text-foreground-muted hover:border-border hover:text-foreground'
+            }`}
+          >
+            {FILTER_LABELS[f]}
+            <span
+              className={`ml-1.5 rounded-full px-1.5 py-0.5 text-xs ${
+                filter === f ? 'bg-user-primary/10 text-user-primary' : 'bg-background-subtle text-foreground-muted'
+              }`}
+            >
+              {counts[f]}
+            </span>
+          </button>
+        ))}
+      </div>
+
       {/* List */}
-      {entries.length === 0 ? (
+      {visible.length === 0 ? (
         <Card>
           <div className="flex flex-col items-center justify-center py-10 text-center">
             <History className="mb-3 h-10 w-10 text-foreground-subtle" />
-            <p className="text-sm text-foreground-muted">No trainings recorded yet</p>
-            <p className="mt-1 text-xs text-foreground-subtle">
-              {isEmployer
-                ? 'Record trainings your staff have attended to build your company history'
-                : 'Record trainings you have attended to build your history'}
+            <p className="text-sm text-foreground-muted">
+              {entries.length === 0 ? 'Nothing here yet' : `No ${FILTER_LABELS[filter].toLowerCase()} trainings`}
             </p>
-            <Button className="mt-4" variant="outline" onClick={openModal} leftIcon={<Plus className="h-4 w-4" />}>
-              {addLabel}
-            </Button>
+            {entries.length === 0 && (
+              <>
+                <p className="mt-1 text-xs text-foreground-subtle">
+                  Every program you open is added here automatically
+                </p>
+                <Link href="/search" className="mt-4">
+                  <Button variant="outline" leftIcon={<Search className="h-4 w-4" />}>
+                    Browse programs
+                  </Button>
+                </Link>
+              </>
+            )}
           </div>
         </Card>
       ) : (
-        <div className="space-y-8">
-          {groupedByYear.map(([year, items]) => (
-            <section key={year}>
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-foreground-muted">{year}</h2>
-              <div className="space-y-3">
-                {items.map((e) => {
-                  const duration = durationLabel(e);
-                  return (
-                    <Card key={e.attendance_id}>
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="min-w-0 flex-1">
-                          <Link
-                            href={`/programs/${e.program_id}`}
-                            className="font-semibold text-foreground hover:text-user-primary"
-                          >
-                            {e.program_title}
-                          </Link>
-                          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-foreground-muted">
-                            <span>{e.provider_name}</span>
-                            {e.category_name && <span>{e.category_name}</span>}
-                            <span className="flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
-                              Attended {formatDate(e.attended_on)}
-                            </span>
-                            {duration && (
-                              <span className="flex items-center gap-1">
-                                <Clock className="h-3 w-3" />
-                                {duration}
-                              </span>
-                            )}
-                            {isEmployer && (
-                              <span className="flex items-center gap-1">
-                                <Users className="h-3 w-3" />
-                                {e.participants_count} staff
-                              </span>
-                            )}
-                            {e.is_certification && (
-                              <span className="flex items-center gap-1 text-green-600">
-                                <Award className="h-3 w-3" />
-                                {e.certification_name || 'Certification'}
-                              </span>
-                            )}
-                          </div>
-                          {e.notes && <p className="mt-2 text-sm text-foreground-muted">{e.notes}</p>}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => remove(e.attendance_id)}
-                          disabled={removingId === e.attendance_id}
-                          title="Remove from history"
-                          className="flex-shrink-0 rounded p-2 text-foreground-subtle hover:bg-background-subtle hover:text-red-600 disabled:opacity-50"
+        <div className="space-y-3">
+          {visible.map((e) => {
+            const attended = e.status === 'attended';
+            const duration = durationLabel(e);
+            const busy = busyId === e.history_id;
+            return (
+              <Card key={e.history_id} className={attended ? 'border-green-200' : ''}>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Link
+                        href={`/programs/${e.program_id}`}
+                        className="font-semibold text-foreground hover:text-user-primary"
+                      >
+                        {e.program_title}
+                      </Link>
+                      {attended ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                          <CheckCircle className="h-3 w-3" /> Attended
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-background-subtle px-2 py-0.5 text-xs font-medium text-foreground-muted">
+                          <Eye className="h-3 w-3" /> Viewed
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-foreground-muted">
+                      <span>{e.provider_name}</span>
+                      {e.category_name && <span>{e.category_name}</span>}
+                      {duration && (
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {duration}
+                        </span>
+                      )}
+                      {attended && e.attended_on ? (
+                        <span className="flex items-center gap-1 text-green-700">
+                          <Calendar className="h-3 w-3" />
+                          Attended {formatDate(e.attended_on)}
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1">
+                          <Eye className="h-3 w-3" />
+                          Viewed {formatDate(e.last_viewed_at)}
+                        </span>
+                      )}
+                      {attended && isEmployer && (
+                        <span className="flex items-center gap-1">
+                          <Users className="h-3 w-3" />
+                          {e.participants_count} staff
+                        </span>
+                      )}
+                      {attended && e.is_certification && (
+                        <span className="flex items-center gap-1 text-green-700">
+                          <Award className="h-3 w-3" />
+                          {e.certification_name || 'Certification'}
+                        </span>
+                      )}
+                    </div>
+                    {attended && e.notes && <p className="mt-2 text-sm text-foreground-muted">{e.notes}</p>}
+                  </div>
+
+                  <div className="flex flex-shrink-0 items-center gap-2">
+                    {attended ? (
+                      <>
+                        <Button size="sm" variant="outline" onClick={() => openAttended(e)} disabled={busy}>
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => unmark(e)}
+                          disabled={busy}
+                          leftIcon={<Undo2 className="h-4 w-4" />}
+                          title="Undo attended"
                         >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </Card>
-                  );
-                })}
-              </div>
-            </section>
-          ))}
+                          Undo
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        size="sm"
+                        onClick={() => openAttended(e)}
+                        disabled={busy}
+                        leftIcon={<CheckCircle className="h-4 w-4" />}
+                      >
+                        {isEmployer ? 'Staff attended' : 'Attended'}
+                      </Button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => remove(e)}
+                      disabled={busy}
+                      title="Remove from history"
+                      className="rounded p-2 text-foreground-subtle hover:bg-background-subtle hover:text-red-600 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
         </div>
       )}
 
-      {/* Add modal */}
-      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={addLabel} size="md">
-        <div className="space-y-4">
-          {selected ? (
+      {/* Attended dialog */}
+      <Modal
+        isOpen={target !== null}
+        onClose={() => setTarget(null)}
+        title={isEmployer ? 'Staff attended this training' : 'I attended this training'}
+        size="md"
+      >
+        {target && (
+          <div className="space-y-4">
             <div className="rounded border border-user-primary/40 bg-user-primary/5 p-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-foreground">{selected.title}</p>
-                  <p className="text-xs text-foreground-muted">{selected.provider?.provider_name}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSelected(null)}
-                  className="text-xs font-medium text-user-primary hover:underline"
-                >
-                  Change
-                </button>
-              </div>
+              <p className="truncate text-sm font-semibold text-foreground">{target.program_title}</p>
+              <p className="text-xs text-foreground-muted">{target.provider_name}</p>
             </div>
-          ) : (
-            <div>
+
+            <div className={isEmployer ? 'grid grid-cols-1 gap-4 sm:grid-cols-2' : ''}>
               <Input
-                label="Training program"
-                placeholder="Search by program or provider name"
-                value={query}
-                onChange={(ev) => setQuery(ev.target.value)}
-                leftIcon={<Search className="h-4 w-4" />}
-                autoFocus
+                label="Date attended"
+                type="date"
+                value={attendedOn}
+                max={todayIso()}
+                onChange={(ev) => setAttendedOn(ev.target.value)}
               />
-              {query.trim() && (
-                <div className="mt-2 max-h-56 overflow-y-auto rounded border border-border">
-                  {searching ? (
-                    <div className="flex items-center justify-center py-4">
-                      <Spinner size="sm" />
-                    </div>
-                  ) : results.length === 0 ? (
-                    <p className="px-3 py-3 text-sm text-foreground-muted">No programs match that search</p>
-                  ) : (
-                    results.map((p) => (
-                      <button
-                        key={p.program_id}
-                        type="button"
-                        onClick={() => {
-                          setSelected(p);
-                          setFormError(null);
-                        }}
-                        className="block w-full border-b border-border px-3 py-2 text-left last:border-b-0 hover:bg-background-subtle"
-                      >
-                        <p className="truncate text-sm font-medium text-foreground">{p.title}</p>
-                        <p className="text-xs text-foreground-muted">
-                          {p.provider?.provider_name}
-                          {p.category?.name ? ` · ${p.category.name}` : ''}
-                        </p>
-                      </button>
-                    ))
-                  )}
-                </div>
+              {isEmployer && (
+                <Input
+                  label="Number of staff attended"
+                  type="number"
+                  min={1}
+                  value={participants}
+                  onChange={(ev) => setParticipants(ev.target.value)}
+                />
               )}
             </div>
-          )}
 
-          <div className={isEmployer ? 'grid grid-cols-1 gap-4 sm:grid-cols-2' : ''}>
-            <Input
-              label="Date attended"
-              type="date"
-              value={attendedOn}
-              max={todayIso()}
-              onChange={(ev) => setAttendedOn(ev.target.value)}
+            <Textarea
+              label="Notes (optional)"
+              rows={3}
+              placeholder={isEmployer ? 'e.g. Sales team, Q2 upskilling' : 'e.g. Completed with distinction'}
+              value={notes}
+              onChange={(ev) => setNotes(ev.target.value)}
             />
-            {isEmployer && (
-              <Input
-                label="Number of staff attended"
-                type="number"
-                min={1}
-                value={participants}
-                onChange={(ev) => setParticipants(ev.target.value)}
-              />
-            )}
+
+            {formError && <p className="text-sm text-red-600">{formError}</p>}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setTarget(null)} disabled={submitting}>
+                Cancel
+              </Button>
+              <Button onClick={submitAttended} isLoading={submitting}>
+                Save
+              </Button>
+            </div>
           </div>
-
-          <Textarea
-            label="Notes (optional)"
-            rows={3}
-            placeholder={isEmployer ? 'e.g. Sales team, Q2 upskilling' : 'e.g. Completed with distinction'}
-            value={notes}
-            onChange={(ev) => setNotes(ev.target.value)}
-          />
-
-          {formError && <p className="text-sm text-red-600">{formError}</p>}
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setModalOpen(false)} disabled={submitting}>
-              Cancel
-            </Button>
-            <Button onClick={submit} isLoading={submitting}>
-              Save to history
-            </Button>
-          </div>
-        </div>
+        )}
       </Modal>
     </div>
   );

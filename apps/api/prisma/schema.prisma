@@ -43,7 +43,7 @@ model User {
   enquiry_replies      EnquiryReply[]
   advisor_conversations AdvisorConversation[]
   feature_entitlements  FeatureEntitlement[]
-  training_attendances  TrainingAttendance[]
+  training_history      TrainingHistoryEntry[]
 
   @@index([role])
   @@index([status])
@@ -298,7 +298,7 @@ model TrainingProgram {
   embeddings           ProgramEmbedding?
   ai_matches           AiMatchRecord[]
   effectiveness_records EffectivenessRecord[]
-  attendances          TrainingAttendance[]
+  history_entries      TrainingHistoryEntry[]
 
   @@index([provider_id])
   @@index([category_id])
@@ -682,21 +682,26 @@ model SavedProgram {
   @@map("saved_programs")
 }
 
-model TrainingAttendance {
-  attendance_id      String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  user_id            String   @db.Uuid
-  program_id         String   @db.Uuid
-  attended_on        DateTime @db.Date
-  participants_count Int      @default(1)
-  notes              String?  @db.Text
-  created_at         DateTime @default(now())
+model TrainingHistoryEntry {
+  history_id         String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id            String    @db.Uuid
+  program_id         String    @db.Uuid
+  status             String    @default("viewed") @db.VarChar(20) // viewed, attended
+  first_viewed_at    DateTime  @default(now())
+  last_viewed_at     DateTime  @default(now())
+  attended_on        DateTime? @db.Date
+  participants_count Int       @default(1)
+  notes              String?   @db.Text
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
 
   user    User            @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
   program TrainingProgram @relation(fields: [program_id], references: [program_id], onDelete: Cascade)
 
-  @@index([user_id])
+  @@unique([user_id, program_id])
+  @@index([user_id, last_viewed_at])
   @@index([program_id])
-  @@map("training_attendances")
+  @@map("training_history_entries")
 }
 
 // ============================================================

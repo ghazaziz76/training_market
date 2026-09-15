@@ -9,11 +9,13 @@ import { Button, Badge, Card, Spinner, Textarea, Avatar } from '@/components/ui'
 import { formatCurrency, formatDeliveryMode, formatDate } from '@/lib/format';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/stores/auth';
 
 type Tab = 'overview' | 'outcomes' | 'schedule' | 'trainer' | 'reviews';
 
 export default function ProgramDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const { user } = useAuthStore();
   const [program, setProgram] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('overview');
@@ -34,6 +36,12 @@ export default function ProgramDetailPage() {
       if (res.success) setReviews(res.data);
     });
   }, [id]);
+
+  // Add this program to the user's training history (employers + individuals only)
+  useEffect(() => {
+    if (!id || !user || (user.role !== 'employer' && user.role !== 'individual')) return;
+    api.post(`/me/training-history/programs/${id}`);
+  }, [id, user]);
 
   const submitReview = async () => {
     setSubmittingReview(true);
