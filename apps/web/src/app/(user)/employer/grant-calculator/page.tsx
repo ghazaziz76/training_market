@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Calculator, Lock, Smartphone, CheckCircle, AlertTriangle, FileText, Copy, QrCode } from 'lucide-react';
+import { Calculator, Smartphone, CheckCircle, AlertTriangle, FileText, Copy, QrCode } from 'lucide-react';
 import { Card, Button, Spinner, Input, Select, Badge } from '@/components/ui';
 import { formatCurrency } from '@/lib/format';
 import { api } from '@/lib/api';
@@ -68,11 +68,10 @@ function ActivationGate({ onActivated }: { onActivated: () => void }) {
     <div className="mx-auto max-w-2xl px-4 py-12">
       <Card className="text-center">
         <div className="flex justify-center mb-4">
-          <div className="rounded-full bg-amber-100 p-4">
-            <Lock className="h-8 w-8 text-amber-600" />
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/tge-icon.png" alt="Training Grant Estimator" className="h-16 w-16 rounded-xl" />
         </div>
-        <h1 className="text-2xl font-bold text-foreground mb-2">HRD Grant Calculator</h1>
+        <h1 className="text-2xl font-bold text-foreground mb-2">Training Grant Estimator</h1>
         <p className="text-foreground-muted mb-6">
           This premium feature calculates your maximum HRD Corp claimable amounts based on the
           Allowable Cost Matrix (ACM). Purchase it on Google Play to unlock.
@@ -132,7 +131,7 @@ function ActivationGate({ onActivated }: { onActivated: () => void }) {
           ) : (
             <div className="bg-background-subtle rounded-lg p-4">
               <p className="text-sm text-foreground-muted mb-3">
-                Open the HRD Grant Calculator app on your phone, tap &quot;Scan to Activate&quot;, and scan this code:
+                Open the Training Grant Estimator app on your phone, tap &quot;Scan to Activate&quot;, and scan this code:
               </p>
               {qrData ? (
                 <div className="bg-white rounded-lg p-6 inline-block">
@@ -218,13 +217,13 @@ function CalculatorForm() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="rounded-full bg-green-100 p-2">
-          <Calculator className="h-5 w-5 text-green-700" />
-        </div>
+      {/* Banner in the Training Grant Estimator app's colours */}
+      <div className="flex items-center gap-3 mb-6 rounded-lg px-5 py-4 text-white shadow bg-gradient-to-br from-[#1a237e] to-[#283593]">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/tge-icon.png" alt="Training Grant Estimator" className="h-11 w-11 rounded-lg" />
         <div>
-          <h1 className="text-2xl font-bold text-foreground">HRD Grant Calculator</h1>
-          <p className="text-sm text-foreground-muted">Allowable Cost Matrix (ACM) Calculator</p>
+          <h1 className="text-2xl font-bold">Training Grant Estimator</h1>
+          <p className="text-sm opacity-85">Allowable Cost Matrix (ACM)</p>
         </div>
         <Badge className="ml-auto bg-green-100 text-green-800">Activated</Badge>
       </div>
